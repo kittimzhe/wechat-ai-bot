@@ -8,6 +8,8 @@ load_dotenv()
 
 def _int_env(name, default):
     value = os.getenv(name, str(default)).strip()
+    if not value:
+        return default
     try:
         return int(value)
     except ValueError as exc:
@@ -16,6 +18,8 @@ def _int_env(name, default):
 
 def _float_env(name, default):
     value = os.getenv(name, str(default)).strip()
+    if not value:
+        return default
     try:
         return float(value)
     except ValueError as exc:

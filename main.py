@@ -24,7 +24,9 @@ logger = logging.getLogger("wechat_ai_bot")
 
 
 def setup_logging():
-    """同时输出到终端和滚动日志文件。"""
+    """同时输出到终端和滚动日志文件，重复调用时不重复添加 handler。"""
+    if logger.handlers:
+        return
     logger.setLevel(getattr(logging, config.LOG_LEVEL, logging.INFO))
     formatter = logging.Formatter(
         "%(asctime)s %(levelname)s %(name)s - %(message)s",

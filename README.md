@@ -89,17 +89,44 @@ python main.py --run 晨间推送
 python main.py
 ```
 
+## 自动化测试
+
+测试不会调用真实企业微信或 AI 接口：
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+## 云函数部署
+
+如果使用腾讯云函数、阿里云函数等 Serverless 平台，把入口设置为：
+
+```text
+cloud_handler.handler
+```
+
+定时器事件可以传入任务名：
+
+```json
+{"job": "晨间推送"}
+```
+
+不传 `job` 时会执行第一个启用的任务。云函数环境变量配置与 `.env` 中的变量相同。云函数只负责一次触发，不需要启动 `main.py` 常驻进程。
+
 ## 项目结构
 
 ```
 wechat-ai-bot/
-├── main.py        # 入口：定时服务 / 手动执行任务
-├── jobs.py        # 任务定义（改这里定制推送内容和时间）
-├── wecom.py       # 企业微信发消息
-├── ai_client.py   # 调用大模型
-├── config.py      # 读取 .env 配置
-├── send_test.py   # 第一步验证脚本
-├── .env.example   # 配置模板（复制为 .env 后填写）
+├── main.py             # 入口：定时服务 / 手动执行任务
+├── cloud_handler.py    # 云函数定时触发入口
+├── jobs.py             # 任务定义（改这里定制推送内容和时间）
+├── wecom.py            # 企业微信发消息
+├── ai_client.py        # 调用大模型
+├── config.py           # 读取 .env 配置
+├── send_test.py        # 第一步验证脚本
+├── tests/              # 不调用真实 API 的自动化测试
+├── .env.example        # 配置模板（复制为 .env 后填写）
 └── requirements.txt
 ```
 

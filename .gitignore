@@ -5,5 +5,7 @@ __pycache__/
 !.env.example
 *.log
 .pytest_cache/
+.coverage
+htmlcov/
 .mypy_cache/
 .DS_Store

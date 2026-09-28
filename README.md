@@ -75,7 +75,7 @@ pip install -r requirements.txt
 
 # 2. 配置
 cp .env.example .env
-# 编辑 .env，填入 企业ID / Secret / AgentId / AI Key
+# 编辑 .env，填入 企业ID / Secret / AgentId / userid / AI Key
 
 # 3. 先验证微信链路（不调用 AI）
 python send_test.py
@@ -119,6 +119,18 @@ wechat-ai-bot/
 ```
 
 `cron` 字段和 Linux crontab 一致，可用的键：`minute`、`hour`、`day`、`day_of_week`（`"mon"` ~ `"sun"`）、`month`，省略即 `*`。例如每周一 9 点：`{"day_of_week": "mon", "hour": 9, "minute": 0}`。
+
+## 可靠性配置
+
+`.env.example` 里提供了可选的可靠性参数：
+
+- `AI_MAX_RETRIES`：AI 临时错误的最大重试次数
+- `AI_RETRY_BASE_DELAY` / `AI_RETRY_MAX_DELAY`：指数退避范围
+- `TIMEZONE=Asia/Shanghai`：固定使用北京时间
+- `LOG_FILE` / `LOG_LEVEL`：结构化日志配置
+- `ALERT_ON_FAILURE=true`：任务失败时给自己发送企业微信告警
+
+调度器已配置任务防重入、错过任务合并和 5 分钟宽限期。默认消息接收人建议填写明确的企业微信成员 `userid`，不要依赖 `@all`。
 
 ## 让它一直跑
 

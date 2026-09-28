@@ -5,16 +5,50 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _int_env(name, default):
+    value = os.getenv(name, str(default)).strip()
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise SystemExit(f"配置 {name} 必须是整数，当前值：{value!r}") from exc
+
+
+def _float_env(name, default):
+    value = os.getenv(name, str(default)).strip()
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise SystemExit(f"配置 {name} 必须是数字，当前值：{value!r}") from exc
+
+
 # ---- 企业微信 ----
 WECOM_CORP_ID = os.getenv("WECOM_CORP_ID", "").strip()
 WECOM_CORP_SECRET = os.getenv("WECOM_CORP_SECRET", "").strip()
-WECOM_AGENT_ID = int(os.getenv("WECOM_AGENT_ID", "0").strip() or "0")
+WECOM_AGENT_ID = _int_env("WECOM_AGENT_ID", 0)
 WECOM_TO_USER = os.getenv("WECOM_TO_USER", "@all").strip()
 
 # ---- AI（OpenAI 兼容接口）----
 AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
 AI_API_KEY = os.getenv("AI_API_KEY", "").strip()
 AI_MODEL = os.getenv("AI_MODEL", "deepseek-chat").strip()
+AI_TIMEOUT_SECONDS = _int_env("AI_TIMEOUT_SECONDS", 120)
+AI_MAX_RETRIES = _int_env("AI_MAX_RETRIES", 3)
+AI_RETRY_BASE_DELAY = _float_env("AI_RETRY_BASE_DELAY", 1.0)
+AI_RETRY_MAX_DELAY = _float_env("AI_RETRY_MAX_DELAY", 8.0)
+AI_TEMPERATURE = _float_env("AI_TEMPERATURE", 0.8)
+AI_MAX_TOKENS = _int_env("AI_MAX_TOKENS", 1024)
+
+# ---- 运行参数 ----
+TIMEZONE = os.getenv("TIMEZONE", "Asia/Shanghai").strip()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+LOG_FILE = os.getenv("LOG_FILE", "bot.log").strip()
+ALERT_ON_FAILURE = os.getenv("ALERT_ON_FAILURE", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def check_config(require_ai=True):
@@ -26,6 +60,8 @@ def check_config(require_ai=True):
         missing.append("WECOM_CORP_SECRET（应用详情页 → Secret）")
     if not WECOM_AGENT_ID:
         missing.append("WECOM_AGENT_ID（应用详情页 → AgentId）")
+    if not WECOM_TO_USER:
+        missing.append("WECOM_TO_USER（通讯录里的成员 userid）")
     if require_ai and not AI_API_KEY:
         missing.append("AI_API_KEY（模型平台注册后创建）")
     if missing:

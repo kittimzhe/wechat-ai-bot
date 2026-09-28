@@ -1,13 +1,17 @@
 """入口。
 
 用法：
-  python main.py              启动定时服务（前台常驻，Ctrl+C 退出）
-  python main.py --list       查看所有任务
-  python main.py --run 晨间推送   立即执行某个任务（测试用）
+  python main.py                  启动定时服务
+  python main.py --list           查看所有任务
+  python main.py --run 晨间推送    立即执行某个任务（测试用）
 """
 import argparse
-import datetime
+import datetime as dt
+import logging
+import time
 import traceback
+from logging.handlers import RotatingFileHandler
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -16,18 +20,77 @@ import config
 import jobs
 import wecom
 
+logger = logging.getLogger("wechat_ai_bot")
+
+
+def setup_logging():
+    """同时输出到终端和滚动日志文件。"""
+    logger.setLevel(getattr(logging, config.LOG_LEVEL, logging.INFO))
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    logger.addHandler(console)
+
+    file_handler = RotatingFileHandler(
+        config.LOG_FILE,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+
+def _limit_message(content, msgtype):
+    """保护企业微信消息长度，避免模型偶尔输出过长导致发送失败。"""
+    max_bytes = 3800 if msgtype == "markdown" else 1900
+    encoded = content.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return content
+    logger.warning("内容超过 %s 字节，已截断", max_bytes)
+    return encoded[:max_bytes].decode("utf-8", errors="ignore").rstrip() + "\n\n（内容已截断）"
+
+
+def _send_failure_alert(job, error):
+    """任务失败时给自己发一条简短告警；告警失败只记日志，避免递归。"""
+    if not config.ALERT_ON_FAILURE:
+        return
+    try:
+        message = (
+            f"⚠️ AI 机器人任务失败\n"
+            f"任务：{job['name']}\n"
+            f"时间：{dt.datetime.now(ZoneInfo(config.TIMEZONE)):%Y-%m-%d %H:%M:%S}\n"
+            f"原因：{str(error)[:500]}"
+        )
+        wecom.send_text(message)
+    except Exception:
+        logger.exception("发送失败告警也失败")
+
 
 def run_job(job):
-    """执行一个任务：AI 生成内容 → 推送到微信。"""
-    now = datetime.datetime.now().strftime("%H:%M:%S")
-    print(f"[{now}] 开始执行任务：{job['name']}")
+    """执行一个任务：AI 生成内容 → 长度保护 → 推送到微信。"""
+    started = time.monotonic()
+    logger.info("开始执行任务：%s", job["name"])
     try:
         content = ai_client.chat(job["prompt"], job.get("system", ""))
-        wecom.send_message(content, job.get("msgtype", "markdown"))
-        preview = content.replace("\n", " ")[:60]
-        print(f"    ✅ 已推送，内容预览：{preview}…")
-    except Exception:
-        print(f"    ❌ 失败：\n{traceback.format_exc()}")
+        msgtype = job.get("msgtype", "markdown")
+        wecom.send_message(_limit_message(content, msgtype), msgtype)
+        elapsed = time.monotonic() - started
+        logger.info("任务成功：%s，耗时 %.1fs", job["name"], elapsed)
+    except Exception as exc:
+        logger.error("任务失败：%s：%s", job["name"], exc)
+        logger.debug(traceback.format_exc())
+        _send_failure_alert(job, exc)
+
+
+def _print_jobs():
+    for job in jobs.JOBS:
+        status = "✅ 启用" if job.get("enabled", True) else "⏸  停用"
+        print(f"  {status}  {job['name']:<8} {job['cron']}  （{job['msgtype']}）")
 
 
 def main():
@@ -37,41 +100,42 @@ def main():
     args = parser.parse_args()
 
     if args.list:
-        for j in jobs.JOBS:
-            status = "✅ 启用" if j.get("enabled", True) else "⏸  停用"
-            print(f"  {status}  {j['name']:<8} {j['cron']}  （{j['msgtype']}）")
+        _print_jobs()
         return
 
     config.check_config(require_ai=True)
+    setup_logging()
 
     if args.run:
-        target = next((j for j in jobs.JOBS if j["name"] == args.run), None)
+        target = next((job for job in jobs.JOBS if job["name"] == args.run), None)
         if not target:
             raise SystemExit(f"找不到任务「{args.run}」，用 --list 查看任务名")
         run_job(target)
         return
 
-    enabled_jobs = [j for j in jobs.JOBS if j.get("enabled", True)]
+    enabled_jobs = [job for job in jobs.JOBS if job.get("enabled", True)]
     if not enabled_jobs:
         raise SystemExit("没有启用的任务，请到 jobs.py 里把 enabled 改为 True")
 
-    scheduler = BlockingScheduler()
+    scheduler = BlockingScheduler(timezone=ZoneInfo(config.TIMEZONE))
     for job in enabled_jobs:
         scheduler.add_job(
             run_job,
             trigger="cron",
             id=job["name"],
             kwargs={"job": job},
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300,
             **job["cron"],
         )
-        print(f"  已注册：{job['name']}  {job['cron']}")
+        logger.info("已注册任务：%s，规则：%s", job["name"], job["cron"])
 
-    print(f"\n🤖 共 {len(enabled_jobs)} 个任务已启动，保持本窗口运行即可（Ctrl+C 退出）")
-    print("   先测试某个任务可另开终端运行：python main.py --run 任务名\n")
+    logger.info("共 %s 个任务已启动，时区：%s，Ctrl+C 退出", len(enabled_jobs), config.TIMEZONE)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
-        print("\n已退出。")
+        logger.info("已退出")
 
 
 if __name__ == "__main__":

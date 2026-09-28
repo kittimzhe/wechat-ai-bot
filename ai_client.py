@@ -1,37 +1,71 @@
-"""调用 OpenAI 兼容的大模型接口生成文本。
+"""调用 OpenAI 兼容的大模型接口生成文本。"""
+import random
+import time
 
-DeepSeek / 智谱 / OpenAI / Kimi 等都兼容这个格式，
-换模型只需改 .env 里的 AI_BASE_URL / AI_MODEL / AI_API_KEY。
-"""
 import requests
 
 import config
 
+_RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+
 
 def chat(prompt, system=""):
-    """发送一次对话，返回模型生成的文本。"""
+    """发送一次对话，遇到临时性错误时自动重试。"""
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    resp = requests.post(
-        f"{config.AI_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {config.AI_API_KEY}"},
-        json={
-            "model": config.AI_MODEL,
-            "messages": messages,
-            "temperature": 0.8,
-            "max_tokens": 1024,
-            "stream": False,
-        },
-        timeout=120,
-    )
+    last_error = None
+    for attempt in range(config.AI_MAX_RETRIES + 1):
+        try:
+            response = requests.post(
+                f"{config.AI_BASE_URL}/chat/completions",
+                headers={"Authorization": f"Bearer {config.AI_API_KEY}"},
+                json={
+                    "model": config.AI_MODEL,
+                    "messages": messages,
+                    "temperature": config.AI_TEMPERATURE,
+                    "max_tokens": config.AI_MAX_TOKENS,
+                    "stream": False,
+                },
+                timeout=config.AI_TIMEOUT_SECONDS,
+            )
 
-    if resp.status_code != 200:
-        raise RuntimeError(f"模型接口返回 {resp.status_code}：{resp.text[:500]}")
+            if response.status_code in _RETRYABLE_STATUS_CODES:
+                last_error = RuntimeError(
+                    f"模型接口临时错误 {response.status_code}：{response.text[:300]}"
+                )
+                if attempt < config.AI_MAX_RETRIES:
+                    _sleep_before_retry(attempt)
+                    continue
+                raise last_error
 
-    data = resp.json()
-    if "choices" not in data:
-        raise RuntimeError(f"模型接口返回异常：{data}")
-    return data["choices"][0]["message"]["content"].strip()
+            if response.status_code >= 400:
+                raise RuntimeError(
+                    f"模型接口返回 {response.status_code}：{response.text[:500]}"
+                )
+
+            data = response.json()
+            try:
+                content = data["choices"][0]["message"]["content"].strip()
+            except (KeyError, IndexError, TypeError, AttributeError) as exc:
+                raise RuntimeError(f"模型接口返回异常：{data}") from exc
+
+            if not content:
+                raise RuntimeError("模型接口返回了空内容")
+            return content
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = RuntimeError(f"模型接口网络错误：{exc}")
+            if attempt < config.AI_MAX_RETRIES:
+                _sleep_before_retry(attempt)
+                continue
+            raise last_error from exc
+
+    raise last_error or RuntimeError("模型请求失败")
+
+
+def _sleep_before_retry(attempt):
+    """指数退避并加入少量随机抖动，避免多个任务同时重试。"""
+    delay = min(config.AI_RETRY_MAX_DELAY, config.AI_RETRY_BASE_DELAY * (2**attempt))
+    time.sleep(delay + random.uniform(0, 0.3))

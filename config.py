@@ -26,6 +26,16 @@ def _float_env(name, default):
         raise SystemExit(f"配置 {name} 必须是数字，当前值：{value!r}") from exc
 
 
+def _optional_float_env(name):
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise SystemExit(f"配置 {name} 必须是数字，当前值：{value!r}") from exc
+
+
 # ---- 企业微信 ----
 WECOM_CORP_ID = os.getenv("WECOM_CORP_ID", "").strip()
 WECOM_CORP_SECRET = os.getenv("WECOM_CORP_SECRET", "").strip()
@@ -53,6 +63,14 @@ ALERT_ON_FAILURE = os.getenv("ALERT_ON_FAILURE", "true").strip().lower() in {
     "yes",
     "on",
 }
+
+# ---- 可选实时数据源 ----
+DATA_TIMEOUT_SECONDS = _int_env("DATA_TIMEOUT_SECONDS", 15)
+WEATHER_LAT = _optional_float_env("WEATHER_LAT")
+WEATHER_LON = _optional_float_env("WEATHER_LON")
+RSS_URLS = os.getenv("RSS_URLS", "").strip()
+RSS_MAX_FEEDS = _int_env("RSS_MAX_FEEDS", 3)
+RSS_MAX_ITEMS = _int_env("RSS_MAX_ITEMS", 8)
 
 
 def check_config(require_ai=True):

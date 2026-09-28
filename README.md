@@ -98,6 +98,39 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
+## 实时数据源
+
+任务可以通过 `data` 字段启用实时上下文：
+
+```python
+"data": {"weather": True, "rss": True}
+```
+
+- 天气使用 Open-Meteo，不需要 API Key；在 `.env` 设置 `WEATHER_LAT` 和 `WEATHER_LON`
+- RSS 在 `.env` 设置逗号分隔的 `RSS_URLS`
+- 数据源请求超时或单个 RSS 失败时会记录日志，不会伪造数据
+- AI 会收到实时数据，并被要求只依据数据生成内容
+
+## Docker / VPS 部署
+
+Docker：
+
+```bash
+docker compose up -d --build
+docker compose logs -f
+```
+
+VPS systemd：
+
+```bash
+sudo cp deploy/wechat-ai-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wechat-ai-bot
+sudo journalctl -u wechat-ai-bot -f
+```
+
+服务会在异常退出时自动重启。`.env` 只放在服务器本地，不要加入镜像或 Git。
+
 ## 云函数部署
 
 如果使用腾讯云函数、阿里云函数等 Serverless 平台，把入口设置为：

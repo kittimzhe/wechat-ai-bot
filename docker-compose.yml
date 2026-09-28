@@ -1,0 +1,11 @@
+services:
+  wechat-ai-bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      LOG_FILE: /app/logs/bot.log
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs

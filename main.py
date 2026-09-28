@@ -17,6 +17,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 import ai_client
 import config
+import data_sources
 import jobs
 import wecom
 
@@ -74,19 +75,25 @@ def _send_failure_alert(job, error):
 
 
 def run_job(job):
-    """执行一个任务：AI 生成内容 → 长度保护 → 推送到微信。"""
+    """执行一个任务并返回结果；失败时重新抛出，便于云平台重试。"""
     started = time.monotonic()
     logger.info("开始执行任务：%s", job["name"])
     try:
-        content = ai_client.chat(job["prompt"], job.get("system", ""))
+        prompt = job["prompt"]
+        context = data_sources.build_context(job.get("data"))
+        if context:
+            prompt = f"{prompt}\n\n请仅根据以下实时数据补充内容，不要编造数据：\n{context}"
+        content = ai_client.chat(prompt, job.get("system", ""))
         msgtype = job.get("msgtype", "markdown")
         wecom.send_message(_limit_message(content, msgtype), msgtype)
         elapsed = time.monotonic() - started
         logger.info("任务成功：%s，耗时 %.1fs", job["name"], elapsed)
+        return {"ok": True, "job": job["name"], "elapsed_seconds": round(elapsed, 1)}
     except Exception as exc:
         logger.error("任务失败：%s：%s", job["name"], exc)
         logger.debug(traceback.format_exc())
         _send_failure_alert(job, exc)
+        raise
 
 
 def _print_jobs():

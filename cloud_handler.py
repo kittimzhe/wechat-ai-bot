@@ -38,5 +38,5 @@ def handler(event=None, context=None):
             raise ValueError("没有启用的任务")
 
     logger.info("云函数触发任务：%s", job["name"])
-    run_job(job)
-    return {"ok": True, "job": job["name"]}
+    result = run_job(job)
+    return result

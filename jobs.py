@@ -27,6 +27,7 @@ JOBS = [
             "3. 一条可操作的小建议\n"
             "用 Markdown 小标题分节。"
         ),
+        "data": {"weather": True},
     },
     {
         "name": "每日一题",

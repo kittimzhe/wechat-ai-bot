@@ -39,8 +39,11 @@ def get_access_token():
         return _token_cache["token"]
 
 
-def send_message(content, msgtype="markdown", to_user=None, _retried=False):
-    """发送应用消息。msgtype: "text" 或 "markdown"。"""
+def send_message(content, msgtype="markdown", to_user=None, title=None, _retried=False):
+    """发送应用消息。msgtype: "text" 或 "markdown"。
+
+    title 参数仅为了和其他渠道统一签名，企业微信消息没有标题概念，会被忽略。
+    """
     if msgtype not in {"text", "markdown"}:
         raise ValueError(f"不支持的消息类型：{msgtype}")
     if not content or not content.strip():
@@ -67,7 +70,7 @@ def send_message(content, msgtype="markdown", to_user=None, _retried=False):
             with _token_lock:
                 _token_cache["token"] = ""
                 _token_cache["expires_at"] = 0.0
-            return send_message(content, msgtype, to_user, _retried=True)
+            return send_message(content, msgtype, to_user=to_user, title=title, _retried=True)
         raise RuntimeError(f"发送失败：{resp}")
 
 

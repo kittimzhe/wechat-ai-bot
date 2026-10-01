@@ -19,7 +19,7 @@ import ai_client
 import config
 import data_sources
 import jobs
-import wecom
+import notify
 
 logger = logging.getLogger("wechat_ai_bot")
 
@@ -69,7 +69,7 @@ def _send_failure_alert(job, error):
             f"时间：{dt.datetime.now(ZoneInfo(config.TIMEZONE)):%Y-%m-%d %H:%M:%S}\n"
             f"原因：{str(error)[:500]}"
         )
-        wecom.send_text(message)
+        notify.send_text(message)
     except Exception:
         logger.exception("发送失败告警也失败")
 
@@ -85,7 +85,7 @@ def run_job(job):
             prompt = f"{prompt}\n\n请仅根据以下实时数据补充内容，不要编造数据：\n{context}"
         content = ai_client.chat(prompt, job.get("system", ""))
         msgtype = job.get("msgtype", "markdown")
-        wecom.send_message(_limit_message(content, msgtype), msgtype)
+        notify.send_message(_limit_message(content, msgtype), msgtype, title=job["name"])
         elapsed = time.monotonic() - started
         logger.info("任务成功：%s，耗时 %.1fs", job["name"], elapsed)
         return {"ok": True, "job": job["name"], "elapsed_seconds": round(elapsed, 1)}

@@ -36,7 +36,13 @@ def _optional_float_env(name):
         raise SystemExit(f"配置 {name} 必须是数字，当前值：{value!r}") from exc
 
 
-# ---- 企业微信 ----
+# ---- 推送渠道（pushplus=个人微信，wecom=企业微信）----
+CHANNEL = os.getenv("CHANNEL", "wecom").strip().lower()
+PUSHPLUS_TOKEN = os.getenv("PUSHPLUS_TOKEN", "").strip()
+PUSHPLUS_URL = os.getenv("PUSHPLUS_URL", "https://www.pushplus.plus/send").strip()
+PUSHPLUS_TIMEOUT_SECONDS = _int_env("PUSHPLUS_TIMEOUT_SECONDS", 15)
+
+# ---- 企业微信（CHANNEL=wecom 时必填）----
 WECOM_CORP_ID = os.getenv("WECOM_CORP_ID", "").strip()
 WECOM_CORP_SECRET = os.getenv("WECOM_CORP_SECRET", "").strip()
 WECOM_AGENT_ID = _int_env("WECOM_AGENT_ID", 0)
@@ -76,14 +82,20 @@ RSS_MAX_ITEMS = _int_env("RSS_MAX_ITEMS", 8)
 def check_config(require_ai=True):
     """启动前检查必填项，缺了直接报错并提示去哪里补。"""
     missing = []
-    if not WECOM_CORP_ID:
-        missing.append("WECOM_CORP_ID（企业微信后台 → 我的企业 → 企业信息 → 企业ID）")
-    if not WECOM_CORP_SECRET:
-        missing.append("WECOM_CORP_SECRET（应用详情页 → Secret）")
-    if not WECOM_AGENT_ID:
-        missing.append("WECOM_AGENT_ID（应用详情页 → AgentId）")
-    if not WECOM_TO_USER:
-        missing.append("WECOM_TO_USER（通讯录里的成员 userid）")
+    if CHANNEL == "pushplus":
+        if not PUSHPLUS_TOKEN:
+            missing.append(
+                "PUSHPLUS_TOKEN（微信扫码登录 https://www.pushplus.plus → 一对一推送 → 复制 token）"
+            )
+    else:
+        if not WECOM_CORP_ID:
+            missing.append("WECOM_CORP_ID（企业微信后台 → 我的企业 → 企业信息 → 企业ID）")
+        if not WECOM_CORP_SECRET:
+            missing.append("WECOM_CORP_SECRET（应用详情页 → Secret）")
+        if not WECOM_AGENT_ID:
+            missing.append("WECOM_AGENT_ID（应用详情页 → AgentId）")
+        if not WECOM_TO_USER:
+            missing.append("WECOM_TO_USER（通讯录里的成员 userid）")
     if require_ai and not AI_API_KEY:
         missing.append("AI_API_KEY（模型平台注册后创建）")
     if missing:
